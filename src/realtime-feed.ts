@@ -15,6 +15,8 @@
  *   12 = Internacionais (IN) — international
  */
 
+import { getStopName } from "./static-feed.js";
+
 // -- Config -----------------------------------------------------------------
 
 const CP_API_BASE =
@@ -57,6 +59,9 @@ export interface TripUpdate {
   arrivalDelaySec: number | null;
   currentDelaySec: number | null;
   trainNumber: string | null;
+  originName: string | null;
+  destinationName: string | null;
+  scheduledArrival: string | null;
 }
 
 export interface FeedSnapshot {
@@ -169,6 +174,9 @@ export async function fetchAndFilter(): Promise<void> {
       arrivalDelaySec: null,
       currentDelaySec: entry.currentDelaySec ?? entry.delaySec,
       trainNumber: entry.trainNumber,
+      originName: entry.originName,
+      destinationName: entry.destinationName,
+      scheduledArrival: null,
     };
     tripCount++;
   }
@@ -201,6 +209,8 @@ interface TrainEntry {
   delaySec: number | null;
   currentDelaySec: number | null;
   cancelled: boolean;
+  originName: string | null;
+  destinationName: string | null;
 }
 
 async function fetchStationTimetable(
@@ -278,6 +288,10 @@ function parseStationResponse(json: unknown, today: string): TrainEntry[] {
     // Cancellation
     const cancelled = Boolean(train.supression ?? false);
 
+    // Extract origin/destination names from the timetable entry
+    const originStr = typeof train.origin === "string" ? train.origin.trim() : null;
+    const destStr = typeof train.destination === "string" ? train.destination.trim() : null;
+
     entries.push({
       trainNumber: trainNum,
       product,
@@ -286,6 +300,8 @@ function parseStationResponse(json: unknown, today: string): TrainEntry[] {
       delaySec,
       currentDelaySec: delaySec,
       cancelled,
+      originName: originStr || null,
+      destinationName: destStr || null,
     });
   }
 
