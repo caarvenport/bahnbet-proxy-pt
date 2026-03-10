@@ -40,13 +40,8 @@ const STATIONS = [
   { code: "94-42002", name: "Evora" },
 ];
 
-/** Service type IDs for long-distance trains */
-const LD_SERVICE_TYPES: Record<number, string> = {
-  1: "AP",   // Alfa Pendular
-  2: "IC",   // Intercidades
-  3: "IR",   // InterRegionais
-  12: "IN",  // Internacionais
-};
+/** Service type codes for long-distance trains (from trainService.code) */
+const LD_SERVICE_CODES = new Set(["AP", "IC", "IR", "IN"]);
 
 // -- Types ------------------------------------------------------------------
 
@@ -236,43 +231,29 @@ function parseStationResponse(json: unknown, today: string): TrainEntry[] {
   const entries: TrainEntry[] = [];
 
   if (!json || typeof json !== "object") return entries;
+  const data = json as Record<string, unknown>;
 
-  // The API may return an array of timetable entries directly,
-  // or wrapped in a response object
-  let trains: unknown[] = [];
-  if (Array.isArray(json)) {
-    trains = json;
-  } else {
-    const data = json as Record<string, unknown>;
-    // Try common wrapper shapes
-    if (Array.isArray(data.trains)) trains = data.trains;
-    else if (Array.isArray(data.timetable)) trains = data.timetable;
-    else if (Array.isArray(data.departures)) trains = data.departures;
-    else if (Array.isArray(data.results)) trains = data.results;
-    else if (Array.isArray(data.data)) trains = data.data;
-    else {
-      // Maybe it's an object with train entries as values
-      const values = Object.values(data);
-      if (values.length > 0 && Array.isArray(values[0])) {
-        trains = values[0] as unknown[];
-      }
-    }
-  }
+  // CP API returns { stationStops: [...] }
+  const stops = Array.isArray(data.stationStops)
+    ? data.stationStops
+    : Array.isArray(json)
+      ? (json as unknown[])
+      : [];
 
-  for (const t of trains) {
+  for (const t of stops) {
     if (!t || typeof t !== "object") continue;
     const train = t as Record<string, unknown>;
 
-    // Get service type and filter to LD
-    const serviceCode = Number(train.serviceCode ?? train.serviceType ?? -1);
-    const product = LD_SERVICE_TYPES[serviceCode];
-    if (!product) continue;
+    // Service type: { trainService: { code: "AP", designation: "Alfa Pendular" } }
+    const svc = train.trainService as Record<string, unknown> | undefined;
+    const product = String(svc?.code ?? "").trim();
+    if (!LD_SERVICE_CODES.has(product)) continue;
 
     // Train number
     const trainNum = String(train.trainNumber ?? "").trim();
     if (!trainNum) continue;
 
-    // Scheduled departure time
+    // Scheduled departure time (HH:MM format)
     const scheduledTime = normalizeTime(
       String(train.departureTime ?? train.arrivalTime ?? ""),
     );
@@ -295,7 +276,7 @@ function parseStationResponse(json: unknown, today: string): TrainEntry[] {
     }
 
     // Cancellation
-    const cancelled = Boolean(train.supression ?? train.cancelled ?? false);
+    const cancelled = Boolean(train.supression ?? false);
 
     entries.push({
       trainNumber: trainNum,
